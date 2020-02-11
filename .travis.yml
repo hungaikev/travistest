@@ -1,0 +1,112 @@
+language: java
+dist: trusty
+jdk:
+- oraclejdk8
+- openjdk8
+- oraclejdk11
+- openjdk11
+
+sudo: required
+
+install: true
+
+services:
+  - docker
+
+before_cache:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+cache:
+  directories:
+    - $HOME/.m2
+    - $HOME/.gradle/caches/
+    - $HOME/.gradle/wrapper/
+
+before_script:
+  - chmod +x gradlew
+
+# safelist
+branches:
+  only:
+    - master
+    - release
+
+stages:
+  - name: testing
+  - name: build
+  - name: snapshot
+    # only publish snapshots from "master" branch and not in pull requests
+    if: branch = master AND type IN (push)
+  - name: dockerise
+    # only dockerise from "master" branch and not in pull requests
+    if: branch = master AND type IN (push)
+  - name: release
+    # only publish releases from "release" branch and not in pull requests
+    if: branch = release AND type IN (push)
+
+jobs:
+  include:
+    #  run tests
+    - stage: testing
+      script:
+        - echo "Running unit tests ...."
+        - echo "Running unit test coverage"
+        - ./gradlew check
+        - ./gradlew jacocoTestReport
+      after_success:
+        - bash <(curl -s https://codecov.io/bash)
+
+    # run gradle build
+    - stage: build
+      script:
+        - echo "Packaging Jar ..."
+        - ./gradlew build
+
+    # publish snapshot to s3(snapshot bucket) and github
+    - stage: snapshot
+      script:
+        - echo "Building to GitHub releases ..."
+      deploy:
+        - provider: releases
+          api_key: ${GITHUB_TOKEN}
+          file: build/libs/{}
+          skip_cleanup: true
+          on:
+            tags: true
+
+        - provider: s3
+          access_key_id: XXX
+          secret_access_key: YYY
+          bucket: your-bucket
+          skip_cleanup: true
+          local_dir: build/libs/{}
+          upload-dir: travis-builds
+          region: eu-west-1
+          acl: public_read
+
+    # package application to containers
+    - stage: dockerise
+      script:
+        - echo "Packaging application into docker containers"
+    # release a new stable version to s3 (production bucket)
+    - stage: release
+      script:
+        - echo "Releasing ....."
+      deploy:
+        - provider: s3
+          access_key_id: XXX
+          secret_access_key: YYY
+          bucket: your-bucket
+          skip_cleanup: true
+          local_dir: build/libs/{}
+          upload-dir: travis-builds
+          region: eu-west-1
+          acl: public_read
+          on:
+            branch: release
+
+notifications:
+  email:
+    on_success: never
+    on_failure: always
