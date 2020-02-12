@@ -1,14 +1,14 @@
 language: java
+
 dist: trusty
+
 jdk:
-- oraclejdk8
-- openjdk8
-- oraclejdk11
-- openjdk11
+  - openjdk8
+  - openjdk11
 
 sudo: required
 
-install: false
+install: true
 
 services:
   - docker
@@ -33,7 +33,7 @@ branches:
     - release
 
 stages:
-  - name: testing
+  - name: unit testing
   - name: build
   - name: snapshot
     # only publish snapshots from "master" branch and not in pull requests
@@ -48,7 +48,7 @@ stages:
 jobs:
   include:
     #  run tests
-    - stage: testing
+    - stage: unit testing
       script:
         - echo "Running unit tests ...."
         - echo "Running unit test coverage"
@@ -67,14 +67,20 @@ jobs:
     - stage: snapshot
       script:
         - echo "Building to GitHub releases ..."
+      before_deploy:
+        # Set up git user name and tag this commit
+        - git config --local user.name "Ajua Team"
+        - git config --local user.email "team@ajua.com"
+        - export TRAVIS_TAG=1.0.0
+        - git tag $TRAVIS_TAG
+
       deploy:
         - provider: releases
           api_key: ${GITHUB_TOKEN}
-          file: build/libs/{}
+          file: build/libs/
           skip_cleanup: true
           on:
             tags: true
-
         - provider: s3
           access_key_id: XXX
           secret_access_key: YYY
